@@ -73,10 +73,63 @@ def sort_vehicle(vehicle_dict):
 
     return {'ID': list_BEV + list_LNG + list_diesel, 'distance': list_BEV_dist + list_LNG_dist + list_diesel_dist}
 
-def separate_ID(df_vehicle):
-    arr_veh = []
-    arr_year = []
-    arr_size = []
+def count_year_vehicle(list_vehicle):
+    dict_year = {}
+    for i in range(2023,2039):
+        dict_year[i] = 0
+        for j in range(len(list_vehicle)):
+            veh = list_vehicle[j]
+            year_buy = veh.split('_')
+            year_buy = year_buy[-1]
+            if year_buy == str(i):
+                dict_year[i] += 1
+    return dict_year
+
+def func_cost_fuel(veh_type, vehicle_fuel, yearly_dist, year):
+    if veh_type == 'LNG':
+        #cost fuel non eco
+        consumption_unit = vehicle_fuel.loc[(vehicle_fuel['Fuel'] == 'LNG')]
+        consumption_unit = consumption_unit['Consumption (unit_fuel/km)'].iloc[0]
+        cost_per_fuel = fuels_data.loc[(fuels_data['Fuel'] == 'LNG') & (fuels_data['Year'] == year)]
+        cost_per_fuel = cost_per_fuel['Cost ($/unit_fuel)'].iloc[0]
+        dist = (1-env_friendly_benchmark[year-2023])*yearly_dist
+        cost_non_eco = consumption_unit*cost_per_fuel*dist
+
+        #cost eco
+        consumption_unit = vehicle_fuel.loc[(vehicle_fuel['Fuel'] == 'BioLNG')]
+        consumption_unit = consumption_unit['Consumption (unit_fuel/km)'].iloc[0]
+        cost_per_fuel = fuels_data.loc[(fuels_data['Fuel'] == 'BioLNG') & (fuels_data['Year'] == year)]
+        cost_per_fuel = cost_per_fuel['Cost ($/unit_fuel)'].iloc[0]
+        dist = (env_friendly_benchmark[year-2023])*yearly_dist
+        cost_eco = consumption_unit*cost_per_fuel*dist
+        # cost_fuel = cost_eco + cost_non_eco
+    elif veh_type == 'Diesel':
+        #cost fuel non eco
+        consumption_unit = vehicle_fuel.loc[(vehicle_fuel['Fuel'] == 'B20')]
+        consumption_unit = consumption_unit['Consumption (unit_fuel/km)'].iloc[0]
+        cost_per_fuel = fuels_data.loc[(fuels_data['Fuel'] == 'B20') & (fuels_data['Year'] == year)]
+        cost_per_fuel = cost_per_fuel['Cost ($/unit_fuel)'].iloc[0]
+        dist = (1-env_friendly_benchmark[year-2023])*yearly_dist
+        cost_non_eco = consumption_unit*cost_per_fuel*dist
+
+        #cost eco
+        consumption_unit = vehicle_fuel.loc[(vehicle_fuel['Fuel'] == 'HVO')]
+        consumption_unit = consumption_unit['Consumption (unit_fuel/km)'].iloc[0]
+        cost_per_fuel = fuels_data.loc[(fuels_data['Fuel'] == 'HVO') & (fuels_data['Year'] == year)]
+        cost_per_fuel = cost_per_fuel['Cost ($/unit_fuel)'].iloc[0]
+        dist = (env_friendly_benchmark[year-2023])*yearly_dist
+        cost_eco = consumption_unit*cost_per_fuel*dist
+        # cost_fuel = cost_eco + cost_non_eco
+    else:
+        cost_non_eco = 0
+        consumption_unit = vehicle_fuel.loc[(vehicle_fuel['Fuel'] == 'Electricity')]
+        consumption_unit = consumption_unit['Consumption (unit_fuel/km)'].iloc[0]
+        cost_per_fuel = fuels_data.loc[(fuels_data['Fuel'] == 'Electricity') & (fuels_data['Year'] == year)]
+        cost_per_fuel = cost_per_fuel['Cost ($/unit_fuel)'].iloc[0]
+        dist = yearly_dist
+        cost_eco = consumption_unit*cost_per_fuel*dist
+        # cost_fuel = cost_eco + cost_non_eco
+    return cost_eco + cost_non_eco
     
 # def carbon_capture():
 
@@ -104,9 +157,19 @@ arr_cost_mnt = []
 arr_cost_fuel = []
 arr_total_cost = []
 arr_cost_sell = []
+arr_max_sold = []
+arr_sold = []
+env_friendly_benchmark = (np.array([0.1, 0.1, 0.1, 0.1, 0.2, 0.3, 0.5, 0.6, 0.6, 0.6, 0.6, 0.4, 0.1, 0.1, 0.1, 0.1]) - 0.1).tolist()
 
 arr_cc_expected = carbon_emissions_data['Carbon emission CO2/kg'].tolist()
 
+dict_year = {}
+dict_year_sell = {}
+for yr in unique_year:
+   dict_year[yr] = []
+   dict_year_sell[yr] = []
+
+arr_env_friendly = []
 for yr in unique_year:
    #buy
    buy[yr] = {'ID': [],
@@ -128,36 +191,33 @@ for yr in unique_year:
          while demand > 0:
             if (len(sorted_feas_vehicle['ID']) == 0) & (demand > 0):
                feas_veh = feasible_vehicle_buy(yr,s[i],d[j])
-               yearly_cost = 0.12*feas_veh['Cost ($)'] + feas_veh['fuel_cost']
+               yearly_cost = 0.19*feas_veh['Cost ($)'] + feas_veh['fuel_cost']
+               #0.265 = (cost + (total biaya ins+mnt selama 10 th) 1.95*cost - 0.3*cost (resale))/10 assume 1 kendaraan untuk 10 th
+               #0.19 = (cost + 0.27*cost (ins+mnt 3 tahun) - 0.7*cost)/3 assume 1 kendaraan untuk 3 tahun
                feas_veh['yearly_cost'] = yearly_cost
                inv = 1/feas_veh['yearly_cost']
-               inv[inv.idxmax()] = inv[inv.idxmax()]*6
+               inv[inv.idxmax()] = inv[inv.idxmax()]+1
+               # inv[inv.idxmax()] = inv[inv.idxmax()]*6
                prob = (inv/sum(inv)).values
                temp_df_decide = decide_vehicle(feas_veh, prob)
                buy[yr]['ID'].append(temp_df_decide['ID'])
                buy[yr]['distance'].append(temp_df_decide['Yearly range (km)'])
                buy[yr]['cost'].append(temp_df_decide['Cost ($)'])
-               # temp_dict = {'ID': temp_df_decide['ID'],
-               #             'buy_cost': temp_df_decide['Cost ($)'],
-               #             'size': s[i],
-               #             'distance_ability': d[j],
-               #             'yearly_distance': temp_df_decide['Yearly range (km)']}
                sorted_feas_vehicle['ID'].append(temp_df_decide['ID'])
-               # sorted_feas_vehicle['buy_cost'].append(temp_dict['buy_cost'])
-               # sorted_feas_vehicle['size'].append(temp_dict['size'])
-               # sorted_feas_vehicle['distance_ability'].append(temp_dict['distance_ability'])
                sorted_feas_vehicle['distance'].append(temp_df_decide['Yearly range (km)'])
                avail_vehicle['ID'].append(temp_df_decide['ID'])
                avail_vehicle['buy_cost'].append(temp_df_decide['Cost ($)'])
                avail_vehicle['distance'].append(temp_df_decide['Yearly range (km)'])
             idx_used = np.argmin(np.abs(np.array(sorted_feas_vehicle['distance']) - demand))
+            demand0 = demand
             demand = demand - sorted_feas_vehicle['distance'][idx_used]
             use[yr]['ID'].append(sorted_feas_vehicle['ID'][idx_used])
             use[yr]['size'].append(s[i])
             use[yr]['distance_bucket'].append(d[j])
-            use[yr]['distance'].append(sorted_feas_vehicle['distance'][idx_used])
-
-            # sorted_feas_vehicle = sorted_feas_vehicle.drop([idx_used])
+            if demand < 0:
+               use[yr]['distance'].append(demand0)
+            else:
+               use[yr]['distance'].append(sorted_feas_vehicle['distance'][idx_used])
 
             veh = sorted_feas_vehicle['ID'][idx_used]
             idx = avail_vehicle['ID'].index(veh)
@@ -165,23 +225,7 @@ for yr in unique_year:
             del avail_vehicle['distance'][idx]
             del avail_vehicle['buy_cost'][idx]
 
-            # temp_list = [0 for i in range(len(avail_vehicle['distance']))]
-            # temp_list[idx] = sorted_feas_vehicle['distance'][idx_used]
-
-            # avail_vehicle['distance'] = np.array(avail_vehicle['distance']) - np.array(temp_list)
-            # is_zero = np.argwhere(abs(avail_vehicle['distance']) <= 0.01).tolist()
-            # if len(is_zero) == 0:
-            #    avail_vehicle['distance'] = avail_vehicle['distance'].tolist()
-            # else:
-            #    avail_vehicle['distance'] = avail_vehicle['distance'].tolist()
-            #    del avail_vehicle['ID'][is_zero[0][0]]
-            #    del avail_vehicle['distance'][is_zero[0][0]]
-            #    del avail_vehicle['buy_cost'][is_zero[0][0]]
-
             del sorted_feas_vehicle['ID'][idx_used]
-            # del sorted_feas_vehicle['buy_cost'][idx_used]
-            # del sorted_feas_vehicle['size'][idx_used]
-            # del sorted_feas_vehicle['distance_ability'][idx_used]
             del sorted_feas_vehicle['distance'][idx_used]
             
    #after buy
@@ -221,13 +265,11 @@ for yr in unique_year:
             if rand_num > prob_env_friendly:
                fuel = 'LNG'
             else:
-               print('rl')
                fuel = 'BioLNG'
          else:
             if rand_num > prob_env_friendly:
                fuel = 'B20'
             else:
-               print('rl')
                fuel = 'HVO'
          use[yr]['fuel'].append(fuel)
          consumption_unit = temp_df.loc[(temp_df['Fuel'] == fuel)]
@@ -242,6 +284,7 @@ for yr in unique_year:
          print('exceed carbon tolerance, need revised available vehicle')
          break
    arr_cc.append(cc)
+   arr_env_friendly.append(prob_env_friendly)
 
    #hitung cost
    #buy
@@ -266,22 +309,12 @@ for yr in unique_year:
       cost_mnt = cost_mnt + pct_mnt*total_fleet['buy_cost'][i]
 
    #cost fuel
-   # use[yr]['fuel'] = []
    total_cost_fuel = 0
    for i in range(len(use[yr]['ID'])):
       veh = use[yr]['ID'][i]
       dist = use[yr]['distance'][i]
       temp_df = vehicle_fuels.loc[vehicle_fuels['ID'] == veh]
-      # veh_type = veh.split('_')
-      # veh_type = veh_type[0]
       fuel = use[yr]['fuel'][i]
-      # if veh_type == 'BEV':
-      #    fuel = 'Electricity'
-      # elif veh_type == 'LNG':
-      #    fuel = 'LNG'
-      # else:
-      #    fuel = 'B20'
-      # use[yr]['fuel'].append(fuel)
       consumption_unit = temp_df.loc[(temp_df['Fuel'] == fuel)]
       consumption_unit = consumption_unit['Consumption (unit_fuel/km)'].iloc[0]
       cost_per_fuel = fuels_data.loc[(fuels_data['Fuel'] == fuel) & (fuels_data['Year'] == yr)]
@@ -297,34 +330,99 @@ for yr in unique_year:
 
    #sell
    max_sold = int(0.2*len(total_fleet['ID']))
+   arr_max_sold.append(max_sold)
    df_total_fleet = pd.DataFrame(total_fleet)
+   if yr < 2038:
+      next_ins = []
+      next_mnt = []
+      resale_decline = []
+      arr_penalty = []
+      next_fuel = []
+      for i in range(len(df_total_fleet)):
+         veh = df_total_fleet['ID'].iloc[i]
+         year_buy = veh.split('_')
+         year_buy = int(year_buy[-1])
+         delta_year = yr - year_buy + 1
+         temp_df = cost_profiles.loc[cost_profiles['End of Year'] <= delta_year+1]
+         pct_ins = temp_df['Insurance Cost %'].iloc[-1]/100
+         pct_mnt = temp_df['Maintenance Cost %'].iloc[-1]/100
+         pct_rd = -(temp_df['Resale Value %'].iloc[-1] - temp_df['Resale Value %'].iloc[-2])/100
+         temp_df = vehicle_fuels.loc[vehicle_fuels['ID'] == veh]
+         # fuel = use[yr]['fuel'][i]
+         veh_type = veh.split('_')
+         veh_type = veh_type[0]
+         if yr+1 > 2038:
+            cost_fuel = func_cost_fuel(veh_type, temp_df,df_total_fleet['yearly_distance'].iloc[i],yr+1)
+         else:
+            cost_fuel = func_cost_fuel(veh_type, temp_df,df_total_fleet['yearly_distance'].iloc[i],yr+1)
 
-   next_ins = []
-   next_mnt = []
-   arr_penalty = []
-   for i in range(len(df_total_fleet)):
-      veh = df_total_fleet['ID'].iloc[i]
-      year_buy = veh.split('_')
-      year_buy = int(year_buy[-1])
-      delta_year = yr - year_buy + 1
-      temp_df = cost_profiles.loc[cost_profiles['End of Year'] == delta_year]
-      pct_ins = temp_df['Insurance Cost %'].iloc[0]/100
-      pct_mnt = temp_df['Maintenance Cost %'].iloc[0]/100
-      next_ins.append(pct_ins*df_total_fleet['buy_cost'].iloc[i])
-      next_mnt.append(pct_mnt*df_total_fleet['buy_cost'].iloc[i])
-      arr_penalty.append(1+2*(delta_year/10)**4)
+         next_ins.append(pct_ins*df_total_fleet['buy_cost'].iloc[i])
+         next_mnt.append(pct_mnt*df_total_fleet['buy_cost'].iloc[i])
+         resale_decline.append(pct_rd*df_total_fleet['buy_cost'].iloc[i])
+         next_fuel.append(cost_fuel)
+         arr_penalty.append(1+0.15*(delta_year/10)**4)
+         # arr_penalty.append(1)
 
-   df_total_fleet['next_ins'] = np.array(next_ins)
-   df_total_fleet['next_mnt'] = np.array(next_mnt)
-   df_total_fleet['next_cost'] = df_total_fleet['next_ins'] + df_total_fleet['next_mnt']
-   df_total_fleet['cost_penalty'] = df_total_fleet['next_cost']*np.array(arr_penalty)
+      df_total_fleet['next_ins'] = np.array(next_ins)
+      df_total_fleet['next_mnt'] = np.array(next_mnt)
+      df_total_fleet['resale_decline'] = np.array(resale_decline)
+      df_total_fleet['next_fuel'] = np.array(next_fuel)
+      df_total_fleet['next_cost'] = df_total_fleet['next_ins'] + df_total_fleet['next_mnt'] + df_total_fleet['resale_decline'] + df_total_fleet['next_fuel']
+      df_total_fleet['cost_penalty'] = df_total_fleet['next_cost']*np.array(arr_penalty)
+   else:
+      resale_price = []
+      for i in range(len(df_total_fleet)):
+         veh = df_total_fleet['ID'].iloc[i]
+         year_buy = veh.split('_')
+         year_buy = int(year_buy[-1])
+         delta_year = yr - year_buy + 1
+         temp_df = cost_profiles.loc[cost_profiles['End of Year'] <= delta_year+1]
+         # pct_ins = temp_df['Insurance Cost %'].iloc[-1]/100
+         # pct_mnt = temp_df['Maintenance Cost %'].iloc[-1]/100
+         pct_rd = (temp_df['Resale Value %'].iloc[-1])/100
+         resale_price.append(pct_rd*df_total_fleet['buy_cost'].iloc[i])
+      df_total_fleet['cost_penalty'] = resale_price
 
    sorted_df_total_fleet = df_total_fleet.sort_values(by=['cost_penalty'], ascending=False)
+   sell_threshold = max_sold
+   if yr < 2038:
+      #compare dengan vehicle di tahun depannya
+      arr_replace_cost = []
+      for i in range(len(sorted_df_total_fleet)):
+         veh = sorted_df_total_fleet['ID'].iloc[i]
+         #cek distance bucket
+         dist_bucket = vehicle_data.loc[(vehicle_data['ID'] == veh)]
+         dist_bucket = dist_bucket['Distance'].iloc[0]
+         size = veh.split('_')
+         size = size[1]
+         feas_veh = feasible_vehicle_buy(yr+1,size,dist_bucket)
+         yearly_cost = 0.19*feas_veh['Cost ($)'] + feas_veh['fuel_cost']
+         #0.265 = (cost + (total biaya ins+mnt selama 10 th) 1.95*cost - 0.3*cost (resale))/10 assume 1 kendaraan untuk 10 th
+         #0.19 = (cost + 0.27*cost (ins+mnt 3 tahun) - 0.7*cost)/3 assume 1 kendaraan untuk 3 tahun
+         feas_veh['yearly_cost'] = yearly_cost
+         inv = 1/feas_veh['yearly_cost']
+         inv[inv.idxmax()] = inv[inv.idxmax()]+1
+         prob = (inv/sum(inv)).values
+         temp_df_decide = decide_vehicle(feas_veh, prob)
+         veh_replace = temp_df_decide['ID']
+         cost_replace = temp_df_decide['Cost ($)']
+         veh_replace_type = veh_replace.split('_')
+         veh_replace_type = veh_replace_type[0]
+         temp_df = vehicle_fuels.loc[vehicle_fuels['ID'] == veh_replace]
+         cost_fuel = func_cost_fuel(veh_replace_type, temp_df,temp_df_decide['Yearly range (km)'],yr+1)
+         arr_replace_cost.append(0.16*cost_replace + cost_fuel)
+      sorted_df_total_fleet['replacement_cost'] = arr_replace_cost
+      sorted_df_total_fleet['differences'] = sorted_df_total_fleet['cost_penalty'] - sorted_df_total_fleet['replacement_cost']
+
+      sorted_df_total_fleet = sorted_df_total_fleet.sort_values(by=['differences'], ascending=False)
+      idx_positive = len(sorted_df_total_fleet.loc[(sorted_df_total_fleet['differences'] >= 0)])
+      sell_threshold = min([max_sold, idx_positive])
 #    print(sorted_df_total_fleet)
+   arr_sold.append(sell_threshold)
    sell[yr] = {'ID': [],
                'cost_sell': []}
 
-   sell[yr]['ID'] = sorted_df_total_fleet['ID'].iloc[:max_sold].tolist()
+   sell[yr]['ID'] = sorted_df_total_fleet['ID'].iloc[:sell_threshold].tolist()
    cost_sell_per_veh = []
    for i in range(len(sell[yr]['ID'])):
       veh = df_total_fleet['ID'].iloc[i]
@@ -340,8 +438,8 @@ for yr in unique_year:
    arr_cost_sell.append(cost_sell)
 
    #calculate fleet availability after sell
-   avail_vehicle['ID'] = sorted_df_total_fleet['ID'].iloc[max_sold:].tolist()
-   avail_vehicle['buy_cost'] = sorted_df_total_fleet['buy_cost'].iloc[max_sold:].tolist()
+   avail_vehicle['ID'] = sorted_df_total_fleet['ID'].iloc[sell_threshold:].tolist()
+   avail_vehicle['buy_cost'] = sorted_df_total_fleet['buy_cost'].iloc[sell_threshold:].tolist()
    arr_dist = []
    for i in range(len(avail_vehicle['ID'])):
       veh = avail_vehicle['ID'][i]
@@ -364,3 +462,10 @@ for yr in unique_year:
 
    total_cost = total_cost - cost_sell
    arr_total_cost.append(total_cost)
+   counter = count_year_vehicle(total_fleet['ID'])
+   for i in counter.keys():
+      dict_year[i].append(counter[i])
+
+   counter_sell = count_year_vehicle(sell[yr]['ID'])
+   for i in counter_sell.keys():
+      dict_year_sell[i].append(counter_sell[i])

@@ -1,0 +1,10 @@
+second submission : 
+third submission : kurangi randomness di buy (solution3)
+fourth submission : distance di use ga harus maksimal distance (solution3)
+submission5 : penalty di sell dinaikin untuk vehicle tahun lama
+submission6 : penalty di sell dinaikin ekstrim untuk vehicle tahun lama (nilai public di 16.9)
+submission7 : sebelum sell compare dengan replacement vehicle di th depan apakah lebih rugi atau tidak (nilai public: 14.74)
+submission8 : consider resale value sblm decide sell vehicle
+submission9 : consider next fuel cost, di 2038 jual kendaraan termahal
+next consider fuel_cost untuk replacement
+consider sell vehicle termahal di akhir2
