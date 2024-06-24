@@ -6,4 +6,6 @@ submission6 : penalty di sell dinaikin ekstrim untuk vehicle tahun lama (nilai p
 submission7 : sebelum sell compare dengan replacement vehicle di th depan apakah lebih rugi atau tidak (nilai public: 14.74)
 submission8 : consider resale value sblm decide sell vehicle
 submission9 : consider next fuel cost, di 2038 jual kendaraan termahal
+submission10 : dr data brute force coef buy dan sell
+SUBMISSION11 : coef buy = coef sell sama2 0.195, assuming rata2 kendaraan bakal tahan 3 tahun
 next consider yearly range dlm membeli vehicle
