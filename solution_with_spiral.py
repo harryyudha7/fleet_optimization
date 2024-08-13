@@ -561,6 +561,7 @@ dict_private_cost[0] = arr_private_cost
 dict_public_cost[0] = arr_public_cost
 arr_param = [param.tolist()]
 
+#spiral optimization
 for it in range(kmax):
     print('it: ', it)
     xstar = np.tile(param.reshape(-1,1), (1, m))
